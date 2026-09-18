@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"hash/fnv"
 
 	"dbgateway/redisclient"
 	"github.com/redis/go-redis/v9"
@@ -21,7 +22,11 @@ func main() {
 
 	fmt.Println("listening on :7001")
 
-	client := redisclient.NewClient()
+	addrs := []string{"127.0.0.1:6379", "127.0.0.1:6380"}
+	clients := make([]*redis.Client, 0, len(addrs))
+	for _, addr := range addrs {
+		clients = append(clients, redisclient.NewClient(addr))
+	}
 
 	for {
 		conn, err := listener.Accept()
@@ -32,11 +37,11 @@ func main() {
 		}
 
 		fmt.Println("client connected:", conn.RemoteAddr())
-		go handleConnection(conn, client)
+		go handleConnection(conn, clients)
 	}
 }
 
-func handleConnection(conn net.Conn, client *redis.Client) {
+func handleConnection(conn net.Conn, clients []*redis.Client) {
 	defer conn.Close()
 
 	ctx := context.Background()
@@ -64,7 +69,9 @@ func handleConnection(conn net.Conn, client *redis.Client) {
 				conn.Write([]byte("ERR usage: GET key\n"))
 				continue
 			}
-			val, err := client.Get(ctx, parts[1]).Result()
+
+			clients := pickClient(clients, parts[1])
+			val, err := clients.Get(ctx, parts[1]).Result()
 
 			if err == redis.Nil {
 				conn.Write([]byte("(nil)\n"))
@@ -83,7 +90,8 @@ func handleConnection(conn net.Conn, client *redis.Client) {
 				continue
 			}
 
-			err := client.Set(ctx, parts[1], parts[2], 0).Err()
+			clients := pickClient(clients, parts[1])
+			err := clients.Set(ctx, parts[1], parts[2], 0).Err()
 
 			if err != nil {
 				conn.Write([]byte(fmt.Sprintf("ERR %s\n", err)))
@@ -97,4 +105,10 @@ func handleConnection(conn net.Conn, client *redis.Client) {
 		}
 
 	}
+}
+
+func pickClient(clients []*redis.Client, key string) *redis.Client {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	return clients[h.Sum32()%uint32(len(clients))]
 }
