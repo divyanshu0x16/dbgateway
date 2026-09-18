@@ -22,5 +22,15 @@ func main() {
 		}
 
 		fmt.Println("client connected:", conn.RemoteAddr())
+		buf := make([]byte, 1024)
+		n, err := conn.Read(buf)
+
+		if err != nil {
+			fmt.Println("read error:", err)
+			continue
+		}
+
+		fmt.Println("received:", string(buf[:n]))
+		conn.Write(buf[:n])
 	}
 }
