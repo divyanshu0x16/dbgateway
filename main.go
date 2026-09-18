@@ -65,6 +65,11 @@ func handleConnection(conn net.Conn, client *redis.Client) {
 				continue
 			}
 			val, err := client.Get(ctx, parts[1]).Result()
+
+			if err == redis.Nil {
+				conn.Write([]byte("(nil)\n"))
+				continue
+			}
 			if err != nil {
 				conn.Write([]byte(fmt.Sprintf("ERR %s\n", err)))
 				continue
