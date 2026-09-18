@@ -1,19 +1,29 @@
 package main
 
-import "fmt"
-import "net"
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"net"
+	"strings"
+
+	"dbgateway/redisclient"
+	"github.com/redis/go-redis/v9"
+)
 
 func main() {
 	fmt.Println("hello from dbgateway")
-	listener, err := net.Listen("tcp", ":7000")
+	listener, err := net.Listen("tcp", ":7001")
 
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("listening on :7000")
+	fmt.Println("listening on :7001")
 
-	for{
+	client := redisclient.NewClient()
+
+	for {
 		conn, err := listener.Accept()
 
 		if err != nil {
@@ -22,22 +32,64 @@ func main() {
 		}
 
 		fmt.Println("client connected:", conn.RemoteAddr())
-		go handleConnection(conn)
+		go handleConnection(conn, client)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, client *redis.Client) {
 	defer conn.Close()
 
-	buf := make([]byte, 1024)
+	ctx := context.Background()
+	reader := bufio.NewReader(conn)
+
 	for {
-		n, err := conn.Read(buf)
+		line, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("read error:", err)
 			return
 		}
 
-		fmt.Printf("received: %s\n", string(buf[:n]))
-		conn.Write(buf[:n])
+		line = strings.TrimSpace(line)
+		parts := strings.Fields(line)
+
+		if len(parts) == 0 {
+			continue
+		}
+
+		command := strings.ToUpper(parts[0])
+
+		switch command {
+		case "GET":
+			if len(parts) != 2 {
+				conn.Write([]byte("ERR usage: GET key\n"))
+				continue
+			}
+			val, err := client.Get(ctx, parts[1]).Result()
+			if err != nil {
+				conn.Write([]byte(fmt.Sprintf("ERR %s\n", err)))
+				continue
+			}
+			conn.Write([]byte(val + "\n"))
+
+		case "SET":
+
+			if len(parts) != 3 {
+				conn.Write([]byte("ERR usage: SET key value\n"))
+				continue
+			}
+
+			err := client.Set(ctx, parts[1], parts[2], 0).Err()
+
+			if err != nil {
+				conn.Write([]byte(fmt.Sprintf("ERR %s\n", err)))
+				continue
+			}
+
+			conn.Write([]byte("OK\n"))
+
+		default:
+			conn.Write([]byte("ERR unknown command\n"))
+		}
+
 	}
 }
