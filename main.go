@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"hash/fnv"
 
 	"dbgateway/redisclient"
+	"dbgateway/ring"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -21,12 +22,12 @@ func main() {
 	}
 
 	fmt.Println("listening on :7001")
-
-	addrs := []string{"127.0.0.1:6379", "127.0.0.1:6380"}
-	clients := make([]*redis.Client, 0, len(addrs))
+	addrs := []string{"127.0.0.1:6379", "127.0.0.1:6380", "127.0.0.1:6381"}
+	clients := make(map[string]*redis.Client)
 	for _, addr := range addrs {
-		clients = append(clients, redisclient.NewClient(addr))
+		clients[addr] = redisclient.NewClient(addr)
 	}
+	r := ring.New(addrs, 100)
 
 	for {
 		conn, err := listener.Accept()
@@ -37,11 +38,11 @@ func main() {
 		}
 
 		fmt.Println("client connected:", conn.RemoteAddr())
-		go handleConnection(conn, clients)
+		go handleConnection(conn, clients, r)
 	}
 }
 
-func handleConnection(conn net.Conn, clients []*redis.Client) {
+func handleConnection(conn net.Conn, clients map[string]*redis.Client, r *ring.Ring) {
 	defer conn.Close()
 
 	ctx := context.Background()
@@ -70,7 +71,7 @@ func handleConnection(conn net.Conn, clients []*redis.Client) {
 				continue
 			}
 
-			clients := pickClient(clients, parts[1])
+			clients := clients[r.Get(parts[1])]
 			val, err := clients.Get(ctx, parts[1]).Result()
 
 			if err == redis.Nil {
@@ -90,7 +91,7 @@ func handleConnection(conn net.Conn, clients []*redis.Client) {
 				continue
 			}
 
-			clients := pickClient(clients, parts[1])
+			clients := clients[r.Get(parts[1])]
 			err := clients.Set(ctx, parts[1], parts[2], 0).Err()
 
 			if err != nil {
@@ -105,10 +106,4 @@ func handleConnection(conn net.Conn, clients []*redis.Client) {
 		}
 
 	}
-}
-
-func pickClient(clients []*redis.Client, key string) *redis.Client {
-	h := fnv.New32a()
-	h.Write([]byte(key))
-	return clients[h.Sum32()%uint32(len(clients))]
 }
