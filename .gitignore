@@ -1,0 +1,20 @@
+# Dot-directories (editor/tool state -- .idea, .vscode, .agent, .slingshot, etc.)
+.*/
+
+# Go build artifacts
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace files (local-only, not part of the module)
+go.work
+go.work.sum
+
+# Environment files
+.env
