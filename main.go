@@ -22,15 +22,22 @@ func main() {
 		}
 
 		fmt.Println("client connected:", conn.RemoteAddr())
-		buf := make([]byte, 1024)
-		n, err := conn.Read(buf)
+		go handleConnection(conn)
+	}
+}
 
+func handleConnection(conn net.Conn) {
+	defer conn.Close()
+
+	buf := make([]byte, 1024)
+	for {
+		n, err := conn.Read(buf)
 		if err != nil {
 			fmt.Println("read error:", err)
-			continue
+			return
 		}
 
-		fmt.Println("received:", string(buf[:n]))
+		fmt.Printf("received: %s\n", string(buf[:n]))
 		conn.Write(buf[:n])
 	}
 }
