@@ -71,8 +71,8 @@ func handleConnection(conn net.Conn, clients map[string]*redis.Client, r *ring.R
 				continue
 			}
 
-			clients := clients[r.Get(parts[1])]
-			val, err := clients.Get(ctx, parts[1]).Result()
+			client := clients[r.Get(parts[1])]
+			val, err := client.Get(ctx, parts[1]).Result()
 
 			if err == redis.Nil {
 				conn.Write([]byte("(nil)\n"))
@@ -91,8 +91,8 @@ func handleConnection(conn net.Conn, clients map[string]*redis.Client, r *ring.R
 				continue
 			}
 
-			clients := clients[r.Get(parts[1])]
-			err := clients.Set(ctx, parts[1], parts[2], 0).Err()
+			client := clients[r.Get(parts[1])]
+			err := client.Set(ctx, parts[1], parts[2], 0).Err()
 
 			if err != nil {
 				conn.Write([]byte(fmt.Sprintf("ERR %s\n", err)))
